@@ -1,11 +1,25 @@
-Flask==2.1.2
-SQLAlchemy==1.4.36
-pydub==0.25.1
-numpy==1.21.6
-torch==1.10.0
-transformers==4.15.0
-langdetect==1.0.9
-requests==2.26.0
-python-dotenv==0.19.2
+# Core dependencies
+flask==2.3.3
+sqlalchemy==2.0.21
+python-dateutil==2.8.2
+
+# AI and ML dependencies
+openai==0.28.1
+transformers==4.34.0
+torch==2.0.1
+numpy==1.24.3
+
+# Audio processing
 pyaudio==0.2.11
-SpeechRecognition==3.8.1
+wave
+sounddevice==0.4.6
+librosa==0.10.1
+
+# Speech recognition
+SpeechRecognition==3.10.0
+whisper-openai==20231117
+
+# Additional utilities
+python-dotenv==1.0.0
+requests==2.31.0
+tqdm==4.66.1
