@@ -1,0 +1,379 @@
+#!/usr/bin/env python3
+"""
+Voice Recording & AI System Setup Script
+Installs all required dependencies and sets up the environment
+"""
+
+import subprocess
+import sys
+import os
+import platform
+import shutil
+from pathlib import Path
+
+class VoiceAISetup:
+    def __init__(self):
+        self.system = platform.system().lower()
+        self.python_executable = sys.executable
+        self.errors = []
+        
+    def run_command(self, command, description="", check=True):
+        """Run a system command with error handling"""
+        print(f"🔧 {description}...")
+        try:
+            if isinstance(command, str):
+                result = subprocess.run(command, shell=True, check=check, 
+                                      capture_output=True, text=True)
+            else:
+                result = subprocess.run(command, check=check, 
+                                      capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                print(f"✅ {description} completed successfully")
+                return True
+            else:
+                error_msg = f"❌ {description} failed: {result.stderr}"
+                print(error_msg)
+                self.errors.append(error_msg)
+                return False
+                
+        except subprocess.CalledProcessError as e:
+            error_msg = f"❌ {description} failed: {e}"
+            print(error_msg)
+            self.errors.append(error_msg)
+            return False
+        except Exception as e:
+            error_msg = f"❌ Unexpected error during {description}: {e}"
+            print(error_msg)
+            self.errors.append(error_msg)
+            return False
+    
+    def check_python_version(self):
+        """Check if Python version is 3.8+"""
+        print("🐍 Checking Python version...")
+        if sys.version_info < (3, 8):
+            print(f"❌ Python 3.8+ required. Current version: {sys.version}")
+            return False
+        print(f"✅ Python {sys.version} is compatible")
+        return True
+    
+    def install_system_dependencies(self):
+        """Install system-level dependencies"""
+        print("🔨 Installing system dependencies...")
+        
+        if self.system == "linux":
+            commands = [
+                ("sudo apt update", "Updating package lists"),
+                ("sudo apt install -y ffmpeg portaudio19-dev python3-dev build-essential libpq-dev git curl wget", 
+                 "Installing system packages")
+            ]
+        elif self.system == "darwin":  # macOS
+            # Check if Homebrew is installed
+            if not shutil.which("brew"):
+                print("❌ Homebrew not found. Please install Homebrew first: https://brew.sh/")
+                return False
+            
+            commands = [
+                ("brew update", "Updating Homebrew"),
+                ("brew install ffmpeg portaudio postgresql redis git", "Installing packages with Homebrew")
+            ]
+        elif self.system == "windows":
+            print("⚠️  For Windows, please manually install:")
+            print("   - FFmpeg: https://ffmpeg.org/download.html")
+            print("   - PostgreSQL: https://www.postgresql.org/download/windows/")
+            print("   - Redis: https://redis.io/download")
+            print("   - Git: https://git-scm.com/download/win")
+            return True
+        else:
+            print(f"❌ Unsupported operating system: {self.system}")
+            return False
+        
+        success = True
+        for command, description in commands:
+            if not self.run_command(command, description, check=False):
+                success = False
+        
+        return success
+    
+    def create_virtual_environment(self):
+        """Create and activate virtual environment"""
+        venv_path = Path("venv")
+        
+        if venv_path.exists():
+            print("📁 Virtual environment already exists")
+            return True
+        
+        return self.run_command([self.python_executable, "-m", "venv", "venv"], 
+                              "Creating virtual environment")
+    
+    def get_venv_python(self):
+        """Get the Python executable path for the virtual environment"""
+        if self.system == "windows":
+            return Path("venv/Scripts/python.exe")
+        else:
+            return Path("venv/bin/python")
+    
+    def install_python_packages(self):
+        """Install Python packages from requirements.txt"""
+        venv_python = self.get_venv_python()
+        
+        if not venv_python.exists():
+            print("❌ Virtual environment Python not found")
+            return False
+        
+        # Upgrade pip first
+        self.run_command([str(venv_python), "-m", "pip", "install", "--upgrade", "pip"], 
+                        "Upgrading pip")
+        
+        # Install wheel for better package compilation
+        self.run_command([str(venv_python), "-m", "pip", "install", "wheel"], 
+                        "Installing wheel")
+        
+        # Install packages from requirements.txt
+        if Path("requirements.txt").exists():
+            return self.run_command([str(venv_python), "-m", "pip", "install", "-r", "requirements.txt"], 
+                                  "Installing Python packages from requirements.txt")
+        else:
+            print("⚠️  requirements.txt not found. Installing core packages...")
+            core_packages = [
+                "fastapi", "uvicorn[standard]", "sqlalchemy", "alembic", 
+                "psycopg2-binary", "redis", "openai-whisper", "transformers",
+                "torch", "spacy", "nltk", "scikit-learn", "numpy", "pandas"
+            ]
+            
+            return self.run_command([str(venv_python), "-m", "pip", "install"] + core_packages,
+                                  "Installing core Python packages")
+    
+    def install_spacy_models(self):
+        """Install spaCy language models"""
+        venv_python = self.get_venv_python()
+        
+        models = ["en_core_web_sm", "en_core_web_md"]
+        
+        for model in models:
+            self.run_command([str(venv_python), "-m", "spacy", "download", model], 
+                           f"Installing spaCy model {model}", check=False)
+    
+    def download_nltk_data(self):
+        """Download required NLTK data"""
+        venv_python = self.get_venv_python()
+        
+        nltk_script = '''
+import nltk
+import ssl
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
+datasets = ['punkt', 'stopwords', 'vader_lexicon', 'wordnet', 'omw-1.4']
+for dataset in datasets:
+    try:
+        nltk.download(dataset, quiet=True)
+        print(f"✅ Downloaded {dataset}")
+    except Exception as e:
+        print(f"❌ Failed to download {dataset}: {e}")
+'''
+        
+        with open("temp_nltk_download.py", "w") as f:
+            f.write(nltk_script)
+        
+        success = self.run_command([str(venv_python), "temp_nltk_download.py"], 
+                                 "Downloading NLTK data", check=False)
+        
+        # Clean up temporary file
+        if os.path.exists("temp_nltk_download.py"):
+            os.remove("temp_nltk_download.py")
+        
+        return success
+    
+    def setup_directories(self):
+        """Create necessary directories"""
+        directories = [
+            "data",
+            "data/recordings",
+            "data/transcriptions", 
+            "data/exports",
+            "logs",
+            "models",
+            "static",
+            "templates"
+        ]
+        
+        print("📁 Creating project directories...")
+        for directory in directories:
+            Path(directory).mkdir(parents=True, exist_ok=True)
+        
+        print("✅ Project directories created")
+        return True
+    
+    def create_env_file(self):
+        """Create sample .env file"""
+        env_content = '''# Voice AI System Configuration
+
+# Database Configuration
+DATABASE_URL=postgresql://username:password@localhost:5432/voiceai
+REDIS_URL=redis://localhost:6379/0
+
+# AI API Keys (Optional - for cloud AI models)
+OPENAI_API_KEY=your_openai_api_key_here
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Elasticsearch Configuration
+ELASTICSEARCH_HOST=localhost
+ELASTICSEARCH_PORT=9200
+
+# Security
+SECRET_KEY=your_secret_key_here
+JWT_SECRET_KEY=your_jwt_secret_here
+
+# File Storage
+STORAGE_PATH=./data
+MAX_FILE_SIZE=100MB
+BACKUP_ENABLED=false
+
+# AI Model Configuration
+LOCAL_MODEL_PATH=./models
+USE_GPU=true
+MODEL_CACHE_DIR=./models/cache
+
+# Application Settings
+DEBUG=true
+HOST=0.0.0.0
+PORT=8000
+CORS_ORIGINS=["http://localhost:3000", "http://localhost:8080"]
+'''
+        
+        env_file = Path(".env")
+        if not env_file.exists():
+            print("📝 Creating sample .env file...")
+            env_file.write_text(env_content)
+            print("✅ Sample .env file created. Please update with your configuration.")
+        else:
+            print("📝 .env file already exists")
+        
+        return True
+    
+    def create_startup_scripts(self):
+        """Create convenient startup scripts"""
+        
+        # Create activation script
+        if self.system == "windows":
+            activate_script = '''@echo off
+echo Activating Voice AI environment...
+call venv\\Scripts\\activate.bat
+echo ✅ Environment activated!
+echo To start the server, run: python -m src.main
+cmd /k
+'''
+            with open("activate.bat", "w") as f:
+                f.write(activate_script)
+        else:
+            activate_script = '''#!/bin/bash
+echo "🚀 Activating Voice AI environment..."
+source venv/bin/activate
+echo "✅ Environment activated!"
+echo "To start the server, run: python -m src.main"
+exec "$SHELL"
+'''
+            with open("activate.sh", "w") as f:
+                f.write(activate_script)
+            os.chmod("activate.sh", 0o755)
+        
+        print("✅ Startup scripts created")
+        return True
+    
+    def verify_installation(self):
+        """Verify that key packages are installed correctly"""
+        venv_python = self.get_venv_python()
+        
+        test_imports = [
+            "import torch; print(f'PyTorch: {torch.__version__}')",
+            "import transformers; print(f'Transformers: {transformers.__version__}')",
+            "import fastapi; print(f'FastAPI: {fastapi.__version__}')",
+            "import spacy; print(f'spaCy: {spacy.__version__}')",
+            "import whisper; print(f'OpenAI Whisper: {whisper.__version__}')",
+        ]
+        
+        print("🔍 Verifying installation...")
+        
+        for test in test_imports:
+            result = subprocess.run([str(venv_python), "-c", test], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"✅ {result.stdout.strip()}")
+            else:
+                print(f"⚠️  Import test failed: {test}")
+        
+        return True
+    
+    def print_next_steps(self):
+        """Print next steps for the user"""
+        print("\n" + "="*60)
+        print("🎉 SETUP COMPLETE!")
+        print("="*60)
+        
+        print("\n📋 Next Steps:")
+        print("1. Update the .env file with your configuration")
+        print("2. Set up PostgreSQL database:")
+        print("   - Create database: createdb voiceai")
+        print("   - Update DATABASE_URL in .env")
+        
+        print("\n3. Start services:")
+        print("   - PostgreSQL: sudo service postgresql start")
+        print("   - Redis: sudo service redis-server start")
+        print("   - Elasticsearch (optional): docker run -p 9200:9200 elasticsearch:8.11.0")
+        
+        print("\n4. Activate environment:")
+        if self.system == "windows":
+            print("   activate.bat")
+        else:
+            print("   ./activate.sh")
+        
+        print("\n5. Run database migrations:")
+        print("   alembic upgrade head")
+        
+        print("\n6. Start the application:")
+        print("   uvicorn src.main:app --reload")
+        
+        if self.errors:
+            print("\n⚠️  Some errors occurred during setup:")
+            for error in self.errors:
+                print(f"   {error}")
+            print("   Please address these issues before proceeding.")
+        
+        print("\n🚀 Happy coding!")
+    
+    def run(self):
+        """Run the complete setup process"""
+        print("🎯 Starting Voice Recording & AI System Setup")
+        print("="*50)
+        
+        steps = [
+            ("Checking Python version", self.check_python_version),
+            ("Installing system dependencies", self.install_system_dependencies),
+            ("Creating virtual environment", self.create_virtual_environment),
+            ("Installing Python packages", self.install_python_packages),
+            ("Installing spaCy models", self.install_spacy_models),
+            ("Downloading NLTK data", self.download_nltk_data),
+            ("Setting up directories", self.setup_directories),
+            ("Creating configuration files", self.create_env_file),
+            ("Creating startup scripts", self.create_startup_scripts),
+            ("Verifying installation", self.verify_installation),
+        ]
+        
+        for step_name, step_function in steps:
+            print(f"\n📦 {step_name}...")
+            try:
+                step_function()
+            except Exception as e:
+                print(f"❌ {step_name} failed: {e}")
+                self.errors.append(f"{step_name}: {e}")
+        
+        self.print_next_steps()
+
+if __name__ == "__main__":
+    setup = VoiceAISetup()
+    setup.run()

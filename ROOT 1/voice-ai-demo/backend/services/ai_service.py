@@ -47,15 +47,11 @@ class AIService:
         
         # Initialize the appropriate AI model
         if model_type == "openai":
-            if not OPENAI_AVAILABLE:
-                raise ImportError("OpenAI package not installed. Run: pip install openai")
             if not api_key:
                 raise ValueError("OpenAI API key required for OpenAI model")
             openai.api_key = api_key
             self.model = None  # We'll use openai directly
         elif model_type == "huggingface":
-            if not TRANSFORMERS_AVAILABLE:
-                raise ImportError("Transformers package not installed. Run: pip install transformers torch")
             # Initialize Hugging Face transformers
             self.summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
             self.qa_pipeline = pipeline("question-answering")
